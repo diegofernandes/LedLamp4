@@ -6,24 +6,19 @@
 const float vPow = 5.0;
 const float r1 = 3300;
 const float r2 = 1000;
-const int batteryPin = 0;
-const int fateOutTime = 3000;
 
-const int statusPin = 2;
 int sleepStatus = LOW;
-const int bluetoothPin = 4;
 uint8_t brightnessState = 50;
 
 
 #define PIN 6
+#define STATUS_PIN 2
+#define BLUETOOTH_PIN 4
+#define BATTERRY_PIN A0
+#define FADE_OUT_TIME 3000
 
-// Parameter 1 = number of pixels in strip
-// Parameter 2 = pin number (most are valid)
-// Parameter 3 = pixel type flags, add together as needed:
-//   NEO_RGB     Pixels are wired for RGB bitstream
-//   NEO_GRB     Pixels are wired for GRB bitstream
-//   NEO_KHZ400  400 KHz bitstream (e.g. FLORA pixels)
-//   NEO_KHZ800  800 KHz bitstream (e.g. High Density LED strip)
+
+
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(4, PIN, NEO_GRB + NEO_KHZ800);
 
 String inputCommand = "";
@@ -32,10 +27,10 @@ String param = "";
 boolean fadeIn = true;
 
 void setup() {
-  pinMode(statusPin, INPUT);
-  pinMode(bluetoothPin, OUTPUT);
+  pinMode(STATUS_PIN, INPUT);
+  pinMode(BLUETOOTH_PIN, OUTPUT);
 
-  digitalWrite(bluetoothPin,HIGH);
+  digitalWrite(BLUETOOTH_PIN,HIGH);
 
   Serial.begin(9600);
   strip.begin();
@@ -47,7 +42,7 @@ void setup() {
 
 void loop() {
 
-  sleepStatus = digitalRead(statusPin);   // read sleep pin here. only active
+  sleepStatus = digitalRead(STATUS_PIN);   // read sleep pin here. only active
   if (sleepStatus == LOW) {            // start to put the device in sleep
     sleepNow();                      // sleep function called here
   }
@@ -240,13 +235,8 @@ void fade( uint8_t wait){
 
 void fadeOut(){
   uint8_t brightness = strip.getBrightness();
- 
-  int wait = fateOutTime / brightness;
-
-  Serial.println("fadeOut");
+  int wait = FADE_OUT_TIME / brightness;
   for (; brightness>10; brightness--) {
-    Serial.println(brightness, DEC);
-    Serial.println(wait, DEC);
     strip.setBrightness(brightness);
     strip.show();
     delay(wait);
@@ -294,81 +284,34 @@ long readVcc() {
 
 
 void wakeUpNow(){
-  
-  digitalWrite(bluetoothPin,HIGH);
- 
+
+  digitalWrite(BLUETOOTH_PIN,HIGH);
+
   strip.setBrightness(brightnessState);
- // strip.show(); 
+
 
 }
 
 
-void sleepNow()         // here we put the arduino to sleep
-{
+void sleepNow(){
   fadeOut();
 
-  digitalWrite(bluetoothPin,LOW);
+  digitalWrite(BLUETOOTH_PIN,LOW);
   strip.clear();
   strip.show();
   delay(200);
-  /* Now is the time to set the sleep mode. In the Atmega8 datasheet
-   * http://www.atmel.com/dyn/resources/prod_documents/doc2486.pdf on page 35
-   * there is a list of sleep modes which explains which clocks and
-   * wake up sources are available in which sleep modus.
-   *
-   * In the avr/sleep.h file, the call names of these sleep modus are to be found:
-   *
-   * The 5 different modes are:
-   *     SLEEP_MODE_IDLE         -the least power savings
-   *     SLEEP_MODE_ADC
-   *     SLEEP_MODE_PWR_SAVE
-   *     SLEEP_MODE_STANDBY
-   *     SLEEP_MODE_PWR_DOWN     -the most power savings
-   *
-   * For now, we want as much power savings as possible,
-   * so we choose the according sleep modus: SLEEP_MODE_PWR_DOWN
-   *
-   */
-  set_sleep_mode(SLEEP_MODE_PWR_DOWN);   // sleep mode is set here
 
-  sleep_enable();              // enables the sleep bit in the mcucr register
-  // so sleep is possible. just a safety pin
+  set_sleep_mode(SLEEP_MODE_PWR_DOWN); 
 
-  /* Now is time to enable a interrupt. we do it here so an
-   * accidentally pushed interrupt button doesn't interrupt
-   * our running program. if you want to be able to run
-   * interrupt code besides the sleep function, place it in
-   * setup() for example.
-   *
-   * In the function call attachInterrupt(A, B, C)
-   * A   can be either 0 or 1 for interrupts on pin 2 or 3.  
-   *
-   * B   Name of a function you want to execute at interrupt for A.
-   *
-   * C   Trigger mode of the interrupt pin. can be:
-   *             LOW        a low level triggers
-   *             CHANGE     a change in level triggers
-   *             RISING     a rising edge of a level triggers
-   *             FALLING    a falling edge of a level triggers
-   *
-   * In all but the IDLE sleep modes only LOW can be used.
-   */
-
-  attachInterrupt(0,wakeUpNow, LOW); // use interrupt 0 (pin 2) and run function
-  // wakeUpNow when pin 2 gets LOW
-
-    sleep_mode();                // here the device is actually put to sleep!!
-  //
-
-  sleep_disable();             // first thing after waking from sleep:
-  // disable sleep...
-  detachInterrupt(0);          // disables interrupt 0 on pin 2 so the
-  // wakeUpNow code will not be executed
-  // during normal running time.
-  delay(1000);                 // wat 2 sec. so humans can notice the
-  // interrupt.
-  // LED to show the interrupt is handled
+  sleep_enable();
+  attachInterrupt(0,wakeUpNow, LOW);
+  sleep_mode();
+  sleep_disable(); 
+  detachInterrupt(0); 
+  delay(1000);
 
 }
+
+
 
 

@@ -3,7 +3,7 @@
 #include <avr/sleep.h>
 
 
-const float vPow = 5.0;
+const float vPow = 4.3;
 const float r1 = 3300;
 const float r2 = 1000;
 
@@ -17,6 +17,9 @@ uint8_t brightnessState = 50;
 #define BATTERRY_PIN A0
 #define FADE_OUT_TIME 3000
 
+#define BATTERY_CYCLE 10000
+#define BATTERY_CYCLE_READ BATTERY_CYCLE/10
+
 
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(4, PIN, NEO_GRB + NEO_KHZ800);
@@ -25,6 +28,8 @@ String inputCommand = "";
 char command = 'f';
 String param = "";
 boolean fadeIn = true;
+
+float batteryVolt = 0;
 
 void setup() {
   pinMode(STATUS_PIN, INPUT);
@@ -49,17 +54,25 @@ void loop() {
 
   switch (command) {
   case  'r':
-    rainbow(20);
+    rainbow(200);
     break;
   case  'c' :
-    colorWipe(param.toInt(), 1000);
+    colorWipe(param.toInt());
     break;
   case 'a' :
     fade(param.toInt());
     break;
+  case 'f' :
+    fire();
+    break;
   default: 
-    fire(random(1000,10000));
+    Serial.println(command + ":1:invalid");
+    command = 'f';
+
   }
+
+  readBattery();
+  delay(1);
 
 }
 
@@ -83,7 +96,6 @@ void serialEvent() {
         command = newCommand;
         param = newParam;
       }
-      Serial.println(inputCommand + ":0:ok");
       inputCommand = "";
     } 
   }
@@ -97,10 +109,11 @@ void preferenceEvent(String preferenceCommand){
   case  'b' :
     brightnessState = paramPreference.toInt();
     strip.setBrightness(paramPreference.toInt());
+    strip.show();
     break;
   case 'v':
-    //Serial.println('p' + paramPreference + ":0:" + readBattery());
-    Serial.println(readBattery());
+    Serial.print("p" + paramPreference + ":0:");
+    Serial.println(batteryVolt);
     break;
   case 's':
     sleepNow();
@@ -113,20 +126,32 @@ void preferenceEvent(String preferenceCommand){
 
 
 // Fill the dots one after the other with a color
-void colorWipe(uint32_t c, uint8_t wait) {
-  for(uint16_t i=0; i<strip.numPixels(); i++) {
-    strip.setPixelColor(i, c);
-    strip.show();
+void colorWipe(uint32_t c) {
+  static uint32_t color = 0;
 
+  if(color != c ){
+    for(uint16_t i=0; i<strip.numPixels(); i++) {
+      strip.setPixelColor(i, c);
+
+
+    }
+    strip.show();
+    color = c;
   }
-  delay(wait);
 }
 
-void fire(uint8_t wait) {
-  strip.setPixelColor(random(0,strip.numPixels()), strip.Color(10,0,0));
-  strip.setPixelColor(random(0,strip.numPixels()), strip.Color(random(200,255),153,0));
-  strip.show();
-  delay(wait);
+void fire() {
+  static int count = 0;
+  if(count == 0 ){
+    strip.setPixelColor(random(0,strip.numPixels()), strip.Color(10,0,0));
+    strip.setPixelColor(random(0,strip.numPixels()), strip.Color(random(200,255),153,0));
+    strip.show();
+    count = random(100,1000);
+
+  }
+  else{
+    count = count -1 ;
+  }
 
 
 
@@ -134,14 +159,27 @@ void fire(uint8_t wait) {
 }
 
 void rainbow(uint8_t wait) {
-  uint16_t i, j;
+  static uint16_t count = 0;
+  static uint16_t j = 0;
+  uint16_t i;
 
-  for(j=0; j<256; j++) {
+  if(count == wait){
+    //Serial.println("========rainbow=====");
+    //Serial.println(j);
     for(i=0; i<strip.numPixels(); i++) {
       strip.setPixelColor(i, Wheel((i+j) & 255));
     }
     strip.show();
-    delay(wait);
+    if(j == 255){
+      j = 0;
+    }else{
+      j++;
+    }
+    count = 0;
+  }
+  else{
+    count++;
+    
   }
 }
 
@@ -211,26 +249,32 @@ void theaterChase(uint32_t c, uint8_t wait) {
 }
 
 void fade( uint8_t wait){
+  static int count = 0;
   uint8_t brightness = strip.getBrightness();
-  Serial.println(brightness,DEC);
-  if(fadeIn){
-    if(brightness<100){
-      strip.setBrightness(brightness+1);
+  if(count == wait){
+    if(fadeIn){
+      if(brightness<100){
+        strip.setBrightness(brightness+1);
+      }
+      else{
+        fadeIn = false;
+      }
     }
     else{
-      fadeIn = false;
+      if(brightness>10){
+        strip.setBrightness(brightness-1);
+      }
+      else{
+        fadeIn = true;
+      }
     }
+    strip.show();
+    count = 0;
   }
   else{
-    if(brightness>10){
-      strip.setBrightness(brightness-1);
-    }
-    else{
-      fadeIn = true;
-    }
+    count++;
   }
-  strip.show();
-  delay(wait);
+
 }
 
 void fadeOut(){
@@ -241,17 +285,35 @@ void fadeOut(){
     strip.show();
     delay(wait);
   }
-
-
-
-
 }
 
 
-float readBattery(){
-  float v = (analogRead(0) * vPow) / 1024.0;
-  float v2 = v / (r2 / (r1 + r2));
-  return v2;
+void readBattery(){
+  static int count = 1;
+
+  static float v2 = 0;
+
+  if(count % (BATTERY_CYCLE_READ) == 0){
+    int ana = analogRead(0);
+    float v = (ana  * vPow) / 1024.0;
+    v2 += v / (r2 / (r1 + r2));
+   // Serial.println("======V2======");
+   // Serial.println(v2);
+   /// Serial.println(count);
+  }
+
+  if(count == BATTERY_CYCLE){
+
+    count = 1;
+    batteryVolt = v2/10;
+    v2 = 0;
+   // Serial.println("======batteryVolt======");
+  //  Serial.println(batteryVolt);
+  }
+  else{
+    count++;
+
+  }
 }
 
 
@@ -311,6 +373,10 @@ void sleepNow(){
   delay(1000);
 
 }
+
+
+
+
 
 
 
